@@ -5,11 +5,10 @@ Uses a 4-byte header to enable transfers of up to 4 GB of data (OS-limited). Pro
 
 ## Background
 - This was written in .net standard to allow .net 4 apps to speak to .net 6/8 and this means it has limitations noted in the code.
-- This users a 4 byet header which consists of a token and the byets sent for the message
+- This uses a 4-byte header allowing maximum message sizes, which consists of a token and the bytes sending for the message
 - The client will then be able to find the start and end of the message and read in the bytes resulting in super fast binary transfer and reading!
-- Definetly could be good to add support for other frameworks and open up more features or port it to .net8 etc -
-- I didnt try 2 way with it.... as features are limited  in standard and my requirement was one way
-- Robust Added in some fault tolerance for connections and reconnections and pipe disposal on a timeout
+- I didn't try 2 way with it.... as features are limited  in standard, and my requirement was one-way so far
+- Robust Added some fault tolerance for connections, reconnections, and pipe disposal on a timeout
 
 ---
 ## Features
@@ -33,6 +32,8 @@ Client Class
 - MessageReceived: Event raised when a full message arrives (MessageEventArgs.Message.Body)
 
 **Contributing**
+- Definitely could be good to add support for other frameworks and open up more features, or port it to .net8 etc.
+- also 2 way IO could be fun
 1. Fork the repository
 2. Create a feature branch (git checkout -b feature/YourFeature)
 3. Commit your changes (git commit -m "Add YourFeature")
