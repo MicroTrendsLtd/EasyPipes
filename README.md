@@ -3,6 +3,9 @@
 A robust, flexible named-pipes library for inter-process communication on Windows.  
 Uses a 4-byte header to enable transfers of up to 4 GB of data (OS-limited). Provides easy-to-use server (`Server.cs`) and client (`Client.cs`) implementations with fully customizable pipe settings. It supports both synchronous and asynchronous operations and is ideal for high-performance, low-latency messaging systems.
 
+![image](https://github.com/user-attachments/assets/d2f707f8-0628-47d1-9ddf-3a2468c14026)
+
+
 ## Background
 - This was written in .net Standard to allow .net 4 apps to speak to .net 6/8 and this means it has limitations noted in the code.
 - Implements 1-way server-to-client IO with very large messaging capacity up to the limit of the OS.
