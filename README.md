@@ -7,11 +7,11 @@ Allows transfers of a message size of 4 GB of data. Provides easy-to-use server 
 
 
 ## Background
-- This was written in .net Standard to allow .net 4 apps to speak to .net 6/8 and this means it has limitations noted in the code.
-- Implements 1-way server-to-client IO with very large messaging capacity up to the limit of the OS.
+- This was written in .net Standard to allow .net 4 apps to speak to .net 6/8 
+- Implements 1-way server-to-client IO with very large messaging capacity via message header patterns
 - Messages have a 2-byte token followed by a 4-byte length header to provide the message payload size 
 - The client can find the start and end of the message bytes, resulting in super-fast binary transfer and reading!
-- Robust: Fult tolerance for sending messages, reconnections, and pipe disposal on timeouts
+- Robust: Fault tolerance for sending messages, reconnections, and pipe disposal on timeouts
 
 ---
 ## Features
