@@ -6,7 +6,7 @@ Uses a 4-byte header to enable transfers of up to 4 GB of data (OS-limited). Pro
 ## Background
 - This was written in .net Standard to allow .net 4 apps to speak to .net 6/8 and this means it has limitations noted in the code.
 - Implements 1-way server-to-client IO with very large messaging capacity up to the limit of the OS.
-- This uses a 4-byte header, which consists of a token and the bytes sent for the message payload
+- Messages have a 2-byte token followed by a 4-byte length header to provide the message payload size 
 - The client can find the start and end of the message bytes, resulting in super-fast binary transfer and reading!
 - Robust: Fult tolerance for sending messages, reconnections, and pipe disposal on timeouts
 
