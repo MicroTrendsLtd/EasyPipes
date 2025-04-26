@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup Label="Globals">
+		<SccProjectName>SAK</SccProjectName>
+		<SccProvider>SAK</SccProvider>
+		<SccAuxPath>SAK</SccAuxPath>
+		<SccLocalPath>SAK</SccLocalPath>
+	</PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyVersion>2025.4.25.1</AssemblyVersion>
+    <FileVersion>2025.4.25.1</FileVersion>
+    <Version>2025.4.25.1</Version>
+    <Description>EasyPipes Windows Named Pipes Server and Client -  A robust generic System.IO.Pipes library, for inter-process communication using a 4-byte header, allowing up to a theoretical 4GB of data transfer (OS-limited). It provides easy-to-use server (Server.cs) and client (Client.cs) implementations, designed for seamless data transmission with customizable pipe configurations. Supports both synchronous and asynchronous operations, ideal for high-performance, low-latency messaging systems.</Description>
+    <Copyright>Copyright (C) 2025, MicroTrends Ltd</Copyright>
+    <Authors>MicroTrends Ltd, Tom Leeson</Authors>
+    <Company>Algo Trading Systems LLC</Company>
+  </PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+		<AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+		<DefineConstants>DEBUG;TRACE</DefineConstants>
+		<Optimize>false</Optimize>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+		<Optimize>True</Optimize>
+	</PropertyGroup>
+</Project>

@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.12.35506.116 d17.12
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EasyPipes", "EasyPipes.csproj", "{14C980D9-D17E-4C03-91B0-98235AF2097D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EasyPipeClientTest", "..\EasyPipeClientTest\EasyPipeClientTest.csproj", "{21AC13A7-677D-412F-BBDF-EC39A3603233}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EasyPipeServerTest", "..\EasyPipeServerTest\EasyPipeServerTest.csproj", "{24AABA56-71FC-4715-8D97-46461B1055CA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{14C980D9-D17E-4C03-91B0-98235AF2097D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{14C980D9-D17E-4C03-91B0-98235AF2097D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{14C980D9-D17E-4C03-91B0-98235AF2097D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{14C980D9-D17E-4C03-91B0-98235AF2097D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{21AC13A7-677D-412F-BBDF-EC39A3603233}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{21AC13A7-677D-412F-BBDF-EC39A3603233}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{21AC13A7-677D-412F-BBDF-EC39A3603233}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{21AC13A7-677D-412F-BBDF-EC39A3603233}.Release|Any CPU.Build.0 = Release|Any CPU
+		{24AABA56-71FC-4715-8D97-46461B1055CA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{24AABA56-71FC-4715-8D97-46461B1055CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{24AABA56-71FC-4715-8D97-46461B1055CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{24AABA56-71FC-4715-8D97-46461B1055CA}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
