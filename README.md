@@ -1,7 +1,7 @@
 # EasyPipes
 **Target Framework:** .NET Standard 2.0
 A robust, flexible named-pipes library for inter-process communication on Windows.  
-Uses a 4-byte header to enable transfers of up to 4 GB of data (OS-limited). Provides easy-to-use server (`Server.cs`) and client (`Client.cs`) implementations with fully customizable pipe settings. It supports both synchronous and asynchronous operations and is ideal for high-performance, low-latency messaging systems.
+Allows transfers of a message size of 4 GB of data (OS-limited). Provides easy-to-use server (`Server.cs`) and client (`Client.cs`) implementations with fully customizable pipe settings. It supports both synchronous and asynchronous operations and is ideal for high-performance, low-latency messaging systems.
 
 ![image](https://github.com/user-attachments/assets/d2f707f8-0628-47d1-9ddf-3a2468c14026)
 
