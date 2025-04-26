@@ -32,9 +32,11 @@ namespace EasyPipeServerTest
 
                 var csvFiles = Directory.GetFiles("data", "*.csv", SearchOption.AllDirectories);
 
+
                 foreach (var file in csvFiles)
                 {
-                    Console.WriteLine($"Sending rows from: {file}");
+                    Console.WriteLine($"{DateTime.Now} - Sending rows from: {file}");
+                        
 
                     // Using StreamReader for better performance with large files
                     using (var reader = new StreamReader(file))
@@ -44,7 +46,7 @@ namespace EasyPipeServerTest
                         await reader.ReadLineAsync();
 
                         int lineCount = 0;
-                        while ((line = await reader.ReadLineAsync()) != null)
+                        while ((line = await reader.ReadLineAsync())!= null)
                         {
                             await server.TrySendMessageAsync(line);
                             lineCount++;
@@ -57,7 +59,7 @@ namespace EasyPipeServerTest
                     }
                 }
 
-                Console.WriteLine("All data sent. Press any key to stop the server...");
+                Console.WriteLine($"{DateTime.Now} - All data sent. Press any key to stop the server...");
                 Console.ReadKey();
 
                 // Stop the server
