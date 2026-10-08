@@ -7,7 +7,8 @@ EasyPipes is a named-pipe client and server library for asynchronous inter-proce
 
 Version **2026.10.8.1** adds hang prevention and recovery improvements. Version **2026.10.8.2** adds simultaneous two-way communication.
 
-The source on `master` is version **2026.10.8.2**, including duplex messaging and the updated tester applications. See [DUPLEX.md](DUPLEX.md) for usage and [RECOVERY.md](RECOVERY.md) for recovery details.
+The source on `master` is version **2026.10.8.2**, including duplex messaging and the updated tester applications. 
+See [DUPLEX.md](DUPLEX.md) for usage and [RECOVERY.md](RECOVERY.md) for recovery details.
 
 ![EasyPipes example](https://github.com/user-attachments/assets/d2f707f8-0628-47d1-9ddf-3a2468c14026)
 
