@@ -51,13 +51,16 @@ The length is read as a signed 32-bit integer and payloads use .NET byte arrays,
 
 Read received text through `MessageEventArgs.Body` or `MessageEventArgs.Message.Body`.
 
-## Quick start: existing one-way examples
+## Quick start: tester applications
 
 1. Download or clone the repository and open `EasyPipes.sln` in Visual Studio.
 2. Build the library and tester projects.
 3. Set `EasyPipeServerTest` as the startup project and run it.
 4. Open a second Visual Studio instance, set `EasyPipeClientTest` as the startup project, and run it.
-5. The server reports the connection and sends messages; the client prints received messages.
+5. With the 2026.10.8.2 tester updates, both applications send a greeting and display incoming messages. Type into either console to send to the other; use `/quit` or Ctrl+C to stop.
+6. In the updated server tester, enter `/csv` to send 10,000 demo rows while continuing to receive client messages.
+
+The duplex tester updates are local until the 2026.10.8.2 source is published. The 2026.10.8.1 testers demonstrate one-way server-to-client traffic.
 
 The library targets .NET Standard 2.0. The supplied tester projects target .NET 8.
 
