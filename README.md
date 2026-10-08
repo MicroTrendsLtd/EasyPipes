@@ -8,7 +8,7 @@ EasyPipes is a named-pipe client and server library for asynchronous inter-proce
 
 Version **2026.10.8.1** adds hang prevention and recovery improvements. Version **2026.10.8.2** adds simultaneous two-way communication.
 
-> The source on `master` is currently version 2026.10.8.1. The 2026.10.8.2 duplex implementation has been built and tested locally and must be published before the two-way example below can be used with a GitHub checkout.
+The source on `master` is version **2026.10.8.2**, including duplex messaging and the updated tester applications. See [DUPLEX.md](DUPLEX.md) for usage and [RECOVERY.md](RECOVERY.md) for recovery details.
 
 ![EasyPipes example](https://github.com/user-attachments/assets/d2f707f8-0628-47d1-9ddf-3a2468c14026)
 
@@ -61,7 +61,7 @@ Read received text through `MessageEventArgs.Body` or `MessageEventArgs.Message.
 5. With the 2026.10.8.2 tester updates, both applications send a greeting and display incoming messages. Type into either console to send to the other; use `/quit` or Ctrl+C to stop.
 6. In the updated server tester, enter `/csv` to send 10,000 demo rows while continuing to receive client messages.
 
-The duplex tester updates are local until the 2026.10.8.2 source is published. The 2026.10.8.1 testers demonstrate one-way server-to-client traffic.
+The 2026.10.8.2 testers demonstrate two-way traffic. Earlier 2026.10.8.1 testers demonstrate one-way server-to-client traffic.
 
 The library targets .NET Standard 2.0. The supplied tester projects target .NET 8.
 
@@ -128,7 +128,7 @@ Deploy the rebuilt `EasyPipes.dll` to consuming applications to receive source u
 
 ## Validation
 
-The recovery implementation passed 13 regression checks. The locally built 2026.10.8.2 implementation passed 18 checks, including simultaneous duplex traffic, concurrent frame writes, reconnecting without restarting the server, stalled writes, partial frames, subscriber exceptions, and shutdown during pending I/O.
+The recovery implementation passed 13 regression checks. The 2026.10.8.2 implementation passed 18 checks, including simultaneous duplex traffic, concurrent frame writes, reconnecting without restarting the server, stalled writes, partial frames, subscriber exceptions, and shutdown during pending I/O.
 
 ## Contributing
 
