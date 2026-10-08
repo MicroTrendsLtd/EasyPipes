@@ -8,10 +8,10 @@
 	<PropertyGroup>
 		<TargetFramework>netstandard2.0</TargetFramework>
         <LangVersion>8.0</LangVersion>
-    <AssemblyVersion>2026.10.8.1</AssemblyVersion>
-    <FileVersion>2026.10.8.1</FileVersion>
-    <Version>2026.10.8.1</Version>
-    <Description>EasyPipes Windows Named Pipes Server and Client -  A robust generic System.IO.Pipes library, for inter-process communication using a 4-byte header, allowing up to a theoretical 4GB of data transfer (OS-limited). It provides easy-to-use server (Server.cs) and client (Client.cs) implementations, designed for seamless data transmission with customizable pipe configurations. Supports both synchronous and asynchronous operations, ideal for high-performance, low-latency messaging systems.</Description>
+    <AssemblyVersion>2026.10.8.2</AssemblyVersion>
+    <FileVersion>2026.10.8.2</FileVersion>
+    <Version>2026.10.8.2</Version>
+    <Description>EasyPipes is a Windows named-pipe client and server library for asynchronous inter-process communication using System.IO.Pipes. Supports one-way and simultaneous two-way messaging, configurable pipe settings, serialized sends, send timeouts, automatic receive-side reconnection, and shutdown that interrupts pending I/O. Messages use UTF-8 encoding with a 2-byte token and 4-byte length header. The configurable maximum message size defaults to 64 MiB. Targets .NET Standard 2.0.</Description>
     <Copyright>Copyright (C) 2025, MicroTrends Ltd</Copyright>
     <Authors>MicroTrends Ltd, Tom Leeson</Authors>
     <Company>Algo Trading Systems LLC</Company>

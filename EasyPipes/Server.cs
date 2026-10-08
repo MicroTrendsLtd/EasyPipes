@@ -15,7 +15,7 @@ namespace EasyPipes
     /// <summary>
     /// The Server class is designed for robustness in inter-process communication (IPC) scenarios using named pipes. It efficiently manages connections, retries, and message transmission while handling errors gracefully. With thread-safety mechanisms and state tracking, the server is capable of handling high-reliability communications, making it well-suited for use in both single-client and multi-client scenarios.
     /// </summary>
-    public class Server : IPipeLayer
+    public partial class Server : IPipeLayer
     {
         #region vars & props
         private readonly object objectLockPipeConnect = new object();
@@ -156,6 +156,7 @@ namespace EasyPipes
                     // Ensure exceptions are observed
                     await connectionTask.ConfigureAwait(false);
 
+                    StartReader(stream);
                     Console.WriteLine($"{pipeName} connection succeeded.");
                     return true;
                 }
@@ -233,7 +234,7 @@ namespace EasyPipes
             {
                 if (!IsStarted || !IsStateReady()) return false;
                 stream = PipeServer;
-                if (stream == null) return false;
+                if (stream == null || !stream.CanWrite) return false;
                 await PipeOperation.RunAsync(stream,
                     () => StreamIO.WriteStringAsync(stream, message), timeoutMillis).ConfigureAwait(false);
                 return true;
@@ -241,12 +242,7 @@ namespace EasyPipes
             catch (Exception e)
             {
                 Console.WriteLine($"{PipeName} > Send > ERROR: {e.Message}");
-                if (ReferenceEquals(PipeServer, stream))
-                {
-                    PipeServer = null;
-                    IsErrors = true;
-                }
-                stream?.Dispose();
+                FailConnection(stream);
                 return false;
             }
             finally { sendGate.Release(); }

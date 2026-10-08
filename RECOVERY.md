@@ -24,3 +24,5 @@ Build with:
 
 Deploy EasyPipes/bin/Release/netstandard2.0/EasyPipes.dll to consuming applications to receive these fixes.
 
+
+Two-way send/receive is available in version 2026.10.8.2; see DUPLEX.md for setup and usage.

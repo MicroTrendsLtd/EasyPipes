@@ -82,5 +82,67 @@ try { await StreamIO.ReadMessageAsync(oversized, 200); throw new Exception("Over
 catch (InvalidDataException) { Check(true, "oversized header rejected before allocation"); }
 
 
-Console.WriteLine("All pipe regression checks passed.");
 
+
+
+// Duplex traffic: both readers operate while concurrent writers preserve frames.
+name = Name();
+server = new Server(name) { PipeIODirection = PipeDirection.InOut, MessageTimeoutMillis = 200, TimeOut = 1 };
+client = new Client(name) { PipeIODirection = PipeDirection.InOut, MessageTimeoutMillis = 200, TimeOut = 1 };
+var serverMessages = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
+var clientMessages = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
+var serverDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+var clientDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+server.MessageReceived += (_, _) => throw new Exception("bad server subscriber");
+server.MessageReceived += (_, e) => { serverMessages.TryAdd(e.Body, 0); if (serverMessages.Count == 20) serverDone.TrySetResult(true); };
+client.MessageReceived += (_, e) => { clientMessages.TryAdd(e.Body, 0); if (clientMessages.Count == 20) clientDone.TrySetResult(true); };
+start = server.StartAsync(); await client.StartAsync(); await Bound(start);
+var duplexSends = Enumerable.Range(0, 20).SelectMany(i => new[] {
+    server.TrySendMessageAsync("server " + i), client.TrySendMessageAsync("client " + i)
+}).ToArray();
+await Bound(Task.WhenAll(duplexSends)); await Bound(Task.WhenAll(serverDone.Task, clientDone.Task));
+Check(duplexSends.All(t => t.Result) && serverMessages.Keys.All(k => k.StartsWith("client ")) && clientMessages.Keys.All(k => k.StartsWith("server ")), "simultaneous duplex concurrent sends and server subscriber isolation");
+await Bound(client.StopAsync());
+var reconnected = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+server.MessageReceived += (_, e) => { if (e.Body == "duplex recovered") reconnected.TrySetResult(e.Body); };
+await client.StartAsync();
+var until = DateTime.UtcNow.AddSeconds(5);
+while (!client.IsStateReady() && DateTime.UtcNow < until) await Task.Delay(25);
+Check(await client.TryConnectSendMessageAsync("duplex recovered"), "client send after duplex reconnect");
+await Bound(reconnected.Task);
+await Bound(Task.WhenAll(client.StopAsync(), server.StopAsync()));
+Check(true, "duplex stop while both reads pending");
+client.Dispose();
+
+// A blocked client writer closes the connection instead of hanging.
+name = Name();
+client = new Client(name) { PipeIODirection = PipeDirection.InOut, TimeOut = 1 };
+using (var raw = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous))
+{
+    await client.StartAsync(); await Bound(raw.WaitForConnectionAsync());
+    var send = client.TrySendMessageAsync(new string('x', 8 * 1024 * 1024), 200);
+    await Bound(send); Check(!await send, "blocked client write times out");
+    await Bound(client.StopAsync());
+}
+client.Dispose();
+
+// Server partial-frame timeout recovers and accepts a replacement duplex peer.
+name = Name();
+server = new Server(name) { PipeIODirection = PipeDirection.InOut, MessageTimeoutMillis = 200, TimeOut = 1 };
+start = server.StartAsync();
+using (var raw = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous))
+{
+    await raw.ConnectAsync(2000); await Bound(start);
+    await raw.WriteAsync(new byte[] { 0x4c }); await Task.Delay(450);
+}
+var serverRecovered = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+server.MessageReceived += (_, e) => serverRecovered.TrySetResult(e.Body);
+using (var raw = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous))
+{
+    await raw.ConnectAsync(3000);
+    await StreamIO.WriteStringAsync(raw, "server recovered");
+    await Bound(serverRecovered.Task);
+    Check(await serverRecovered.Task == "server recovered", "server partial-frame recovery");
+}
+await Bound(server.StopAsync());
+Console.WriteLine("All pipe regression checks passed.");

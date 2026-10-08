@@ -16,12 +16,13 @@ namespace EasyPipes
     /// <summary>
     /// The Client class implements a pipe client using NamedPipeClientStream for inter-process communication. It provides methods to connect asynchronously to a pipe server, read messages, and manage the connection state. The class handles message transmission, error reporting, and resource disposal. Events are raised for message reception (MessageReceived) and state updates (StateMessage). It supports asynchronous operations like connection retries and message reading while ensuring thread safety with locking mechanisms. Additionally, the class includes customizable pipe options and implements the IDisposable interface for clean resource management.
     /// </summary>
-    public class Client : IPipeLayer, IDisposable
+    public partial class Client : IPipeLayer, IDisposable
     {
         private readonly object objectLockPipeConnect = new object();
         private readonly object objectLockReader = new object();
         private bool isWaitingConnection;
         private bool isReading;
+        private readonly SemaphoreSlim sendGate = new SemaphoreSlim(1, 1);
         private readonly SemaphoreSlim lifecycleGate = new SemaphoreSlim(1, 1);
         private Task readerTask = Task.CompletedTask;
         private CancellationTokenSource lifetime = new CancellationTokenSource();
@@ -114,7 +115,11 @@ namespace EasyPipes
 
                 while (IsStarted && IsStateReady())
                 {
-                    await TryReadMessagesAsync().ConfigureAwait(false);
+                    var stream = PipeClient;
+                    if (stream != null && stream.CanRead)
+                        await TryReadMessagesAsync().ConfigureAwait(false);
+                    else
+                        await Task.Delay(100).ConfigureAwait(false);
                 }
             }
         }
@@ -172,7 +177,7 @@ namespace EasyPipes
 
                 //reset the pipe in case of Pipe IO Errors
                 PipeDispose();
-                
+
                 OnStateMessage(new StateMessageEventArgs($"EasyPipes.Client > {pipeName} > Try Connect"));
 
                 // Create the NamedPipeClientStream with configurable parameters
@@ -244,10 +249,10 @@ namespace EasyPipes
                 if (isReading) return false;
                 isReading = true;
             }
+            var stream = PipeClient;
             try
             {
-                var stream = PipeClient;
-                if (stream == null) return false;
+                if (stream == null || !stream.CanRead) return false;
                 Message message = await StreamIO.ReadMessageAsync(stream, MessageTimeoutMillis).ConfigureAwait(false);
 
                 if (message.IsValid)
@@ -261,7 +266,7 @@ namespace EasyPipes
             }
             catch (Exception e)
             {
-                IsErrors = true;
+                FailConnection(stream);
                 OnStateMessage(new StateMessageEventArgs($"EasyPipes.Client > {PipeName} > ReadMessagesAsync > ERROR:\n{e}"));
             }
             finally { isReading = false; }
