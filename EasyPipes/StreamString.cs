@@ -1,4 +1,4 @@
-﻿//-----------------------------------------------------------------------
+//-----------------------------------------------------------------------
 // <copyright company="MicroTrends Ltd, https://github.com/MicroTrendsLtd">
 //     Author: Tom Leeson
 //     Copyright (c) 2025 MicroTrends Ltd. All rights reserved.
@@ -18,6 +18,28 @@ namespace EasyPipes
     /// </summary>
     public class StreamIO
     {
+        /// <summary>Waits freely for a message to start, then bounds frame assembly.</summary>
+        public static async Task<Message> ReadMessageAsync(Stream stream, int timeoutMillis)
+        {
+            if (timeoutMillis <= 0) throw new ArgumentOutOfRangeException(nameof(timeoutMillis));
+            var token = new byte[2];
+            await ReadExactlyAsync(stream, token, 0, 1).ConfigureAwait(false);
+            return await PipeOperation.RunAsync(stream, async () =>
+            {
+                await ReadExactlyAsync(stream, token, 1, 1).ConfigureAwait(false);
+                if (BitConverter.ToUInt16(token, 0) != MessageToken)
+                    throw new InvalidDataException("Invalid message token.");
+                var header = new byte[4];
+                await ReadExactlyAsync(stream, header, 0, 4).ConfigureAwait(false);
+                int size = BitConverter.ToInt32(header, 0);
+                if (size < 0 || size > MaxMessageBytes)
+                    throw new InvalidDataException("Message size exceeds the configured limit.");
+                var bytes = await ReadBytesChunkedAsync(stream, size).ConfigureAwait(false);
+                return new Message { Bytes = bytes, Body = Encoding.UTF8.GetString(bytes) };
+            }, timeoutMillis).ConfigureAwait(false);
+        }
+
+        public static int MaxMessageBytes { get; set; } = 64 * 1024 * 1024;
         //2 byte Header token to identify start of message
         internal const ushort MessageToken = (ushort)((0x54 << 8) | 0x4C); // Equivalent to "TL" coder ;-)
 
@@ -30,20 +52,8 @@ namespace EasyPipes
         /// <returns>A Message object containing the byte array and the string data.</returns>
         public static async Task<Message> ReadAsync(Stream ioStream)
         {
-            if (ioStream == null)
-                throw new ArgumentNullException(nameof(ioStream));
-
-            byte[] inBuffer = await ReadBytesChunkAsync(ioStream).ConfigureAwait(false);
-            Message message = new Message
-            {
-                Bytes = inBuffer,
-                DateTimeSent = DateTimeOffset.UtcNow,
-                Body = Encoding.UTF8.GetString(inBuffer)
-            };
-
-            return message;
+            return await ReadMessageAsync(ioStream, 30000).ConfigureAwait(false);
         }
-
         /// <summary>
         /// Reads a chunked byte array from the stream using a 4-byte length header.
         /// First, it reads a 2-byte token to validate the message; then, it reads the 4-byte length header and the full message data.
@@ -64,9 +74,9 @@ namespace EasyPipes
             ushort token = BitConverter.ToUInt16(tokenBuffer, 0);
             if (token != expectedToken)
             {
-                Console.WriteLine($"Invalid token received: {token}. Expected: {expectedToken}. Flushing the stream...");
-                await FlushStreamAsync(ioStream).ConfigureAwait(false);
-                throw new InvalidDataException("Invalid token. Stream flushed.");
+                Console.WriteLine($"Invalid token received: {token}. Expected: {expectedToken}. Rejecting the frame...");
+                // Reject the frame immediately; reading to flush can block forever.
+                throw new InvalidDataException("Invalid token.");
             }
 
             // Step 2: Read the 4-byte length header to get the message size.
@@ -74,8 +84,8 @@ namespace EasyPipes
             await ReadExactlyAsync(ioStream, lengthBuffer, 0, 4).ConfigureAwait(false);
 
             int messageSize = BitConverter.ToInt32(lengthBuffer, 0);
-            if (messageSize < 0)
-                throw new InvalidDataException("Negative message size encountered.");
+            if (messageSize < 0 || messageSize > MaxMessageBytes)
+                throw new InvalidDataException("Message size exceeds the configured limit.");
 
             // Step 3: Read the full message based on the message size.
             return await ReadBytesChunkedAsync(ioStream, messageSize).ConfigureAwait(false);
@@ -135,8 +145,8 @@ namespace EasyPipes
         {
             if (ioStream == null)
                 throw new ArgumentNullException(nameof(ioStream));
-            if (messageSize < 0)
-                throw new ArgumentOutOfRangeException(nameof(messageSize), "Message size cannot be negative.");
+            if (messageSize < 0 || messageSize > MaxMessageBytes)
+                throw new ArgumentOutOfRangeException(nameof(messageSize), "Message size must be within the configured limit.");
 
             byte[] buffer = new byte[messageSize]; // Allocate buffer based on the message size.
             await ReadExactlyAsync(ioStream, buffer, 0, messageSize).ConfigureAwait(false);
@@ -158,7 +168,7 @@ namespace EasyPipes
                 throw new ArgumentNullException(nameof(stream));
             if (buffer == null)
                 throw new ArgumentNullException(nameof(buffer));
-            if (startIndex < 0 || startIndex >= buffer.Length)
+            if (startIndex < 0 || startIndex > buffer.Length)
                 throw new ArgumentOutOfRangeException(nameof(startIndex));
             if (count < 0)
                 throw new ArgumentException("The number of bytes to read cannot be negative.", nameof(count));
@@ -217,6 +227,7 @@ namespace EasyPipes
                 throw new ArgumentNullException(nameof(outBuffer));
 
             int len = outBuffer.Length;
+            if (len > MaxMessageBytes) throw new ArgumentOutOfRangeException(nameof(outBuffer));
 
             // Write the 2-byte token (little-endian by default).
             byte[] tokenBytes = BitConverter.GetBytes(token);

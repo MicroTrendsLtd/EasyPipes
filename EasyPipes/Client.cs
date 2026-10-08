@@ -1,4 +1,4 @@
-﻿//-----------------------------------------------------------------------
+//-----------------------------------------------------------------------
 // <copyright company="MicroTrends Ltd, https://github.com/MicroTrendsLtd">
 //     Author: Tom Leeson
 //     Copyright (c) 2025 MicroTrends Ltd. All rights reserved.
@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.IO.Pipes;
 using System.Security.Principal;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace EasyPipes
@@ -21,6 +22,10 @@ namespace EasyPipes
         private readonly object objectLockReader = new object();
         private bool isWaitingConnection;
         private bool isReading;
+        private readonly SemaphoreSlim lifecycleGate = new SemaphoreSlim(1, 1);
+        private Task readerTask = Task.CompletedTask;
+        private CancellationTokenSource lifetime = new CancellationTokenSource();
+        public int MessageTimeoutMillis { get; set; } = 30000;
         public NamedPipeClientStream PipeClient { get; set; }
         public string PipeName { get; set; } = "EasyPipe1";
         public event EventHandler<MessageEventArgs> MessageReceived;
@@ -49,77 +54,49 @@ namespace EasyPipes
         /// <returns></returns>
         public async Task StartAsync()
         {
-            Console.WriteLine("StartAsync");
-            OnStateMessage(new StateMessageEventArgs($"{PipeName} > Start"));
-            await Task.Delay(1000);
-            //let this go so can return back to main thread
-            IsStarted = true;
-            _ = DoConnectAndReadInternalAsync();
+            await lifecycleGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (IsStarted) return;
+                await readerTask.ConfigureAwait(false);
+                lifetime.Dispose();
+                lifetime = new CancellationTokenSource();
+                IsStarted = true;
+                readerTask = Task.Run(DoConnectAndReadInternalAsync);
+            }
+            finally { lifecycleGate.Release(); }
         }
-
         /// <summary>
         /// Stops the pipe client, disposes of resources, and logs the stop state.
         /// </summary>
         /// <returns></returns>
         public async Task StopAsync()
         {
-            Console.WriteLine("StopAsync");
-            IsStarted = false;
-            await Task.Delay(1000);
+            await lifecycleGate.WaitAsync().ConfigureAwait(false);
             try
             {
-                OnStateMessage(new StateMessageEventArgs($"{PipeName} > Stop"));
+                IsStarted = false;
+                lifetime.Cancel();
                 PipeDispose();
+                await readerTask.ConfigureAwait(false);
+                IsErrors = false;
             }
-            catch (Exception e)
-            {
-                OnStateMessage(new StateMessageEventArgs($"{PipeName} > Stop >  ERROR:\n{e}"));
-            }
-            IsErrors = false;
+            finally { lifecycleGate.Release(); }
         }
-
         /// <summary>
         /// Safely disposes the pipe client, handling disconnection and error states
         /// </summary>
         private void PipeDispose()
         {
-            try
+            NamedPipeClientStream stream;
+            lock (objectLockPipeConnect)
             {
-                if (PipeClient != null)
-                {
-                    Console.WriteLine("PipeDispose");
-
-                    // Check if the pipe is still connected before attempting to flush
-                    if (PipeClient.IsConnected)
-                    {
-                        try
-                        {
-                            PipeClient.Flush();
-                        }
-                        catch (IOException ioEx)
-                        {
-                            Console.WriteLine($"PipeDispose error during flush: {ioEx.Message}");
-                            // It's fine if the pipe is already broken during flush, handle this gracefully
-                        }
-                    }
-
-                    // Always close and dispose of the pipe
-                    PipeClient.Close(); // Close the pipe
-                    PipeClient.Dispose(); // Dispose of the pipe
-                }
-            }
-            catch (Exception e)
-            {
-                OnStateMessage(new StateMessageEventArgs($"{PipeName} > PipeDispose > ERROR:\n{e}"));
-            }
-            finally
-            {
-                // Reset state to reflect that the client is no longer connected
-                IsErrors = false;
+                stream = PipeClient;
                 PipeClient = null;
+                IsErrors = false;
             }
+            stream?.Dispose();
         }
-
         /// <summary>
         /// Continuously attempts to connect and read from the pipe while the client is started.
         /// </summary>
@@ -131,13 +108,13 @@ namespace EasyPipes
             {
                 while (IsStarted && !IsStateReady())
                 {
-                    if (await TryCreateAndWaitForConnectionAsync())
-                        break;
+                    if (await TryCreateAndWaitForConnectionAsync().ConfigureAwait(false)) break;
+                    await Task.Delay(250).ConfigureAwait(false);
                 }
 
                 while (IsStarted && IsStateReady())
                 {
-                    await TryReadMessagesAsync();
+                    await TryReadMessagesAsync().ConfigureAwait(false);
                 }
             }
         }
@@ -199,11 +176,19 @@ namespace EasyPipes
                 OnStateMessage(new StateMessageEventArgs($"EasyPipes.Client > {pipeName} > Try Connect"));
 
                 // Create the NamedPipeClientStream with configurable parameters
-                PipeClient = new NamedPipeClientStream(serverName, pipeName, pipeDirection, pipeOptions, tokenImpersonationLevel);
+                NamedPipeClientStream stream;
+                lock (objectLockPipeConnect)
+                {
+                    if (!IsStarted) return false;
+                    stream = new NamedPipeClientStream(serverName, pipeName, pipeDirection,
+                        pipeOptions | PipeOptions.Asynchronous, tokenImpersonationLevel);
+                    PipeClient = stream;
+                }
 
 
                 // Connect the client with an optional timeout (in milliseconds) convert from seconds
-                await PipeClient.ConnectAsync(timeout * 1000);
+                await stream.ConnectAsync(timeout * 1000, lifetime.Token).ConfigureAwait(false);
+                if (!IsStarted) { PipeDispose(); return false; }
                 //PipeClient.ReadMode = TransmissionMode;
                 //due to a bug in netstandard stuck in byte mode
                 /*System.UnauthorizedAccessException: Access to the path is denied.
@@ -226,11 +211,11 @@ namespace EasyPipes
                 OnStateMessage(new StateMessageEventArgs($"EasyPipes.Client > {pipeName} > CreateAndWaitForConnectionAsync > ERROR:\n{e}"));
             }
 
-            if (IsErrors)
+            finally
             {
-                PipeDispose();  // Clean up resources in case of error
+                if (IsErrors) PipeDispose();
+                isWaitingConnection = false;
             }
-            isWaitingConnection = false;
             return IsStateReady();
         }
 
@@ -240,7 +225,9 @@ namespace EasyPipes
         /// <returns></returns>
         public bool IsStateReady()
         {
-            return (!IsErrors && PipeClient != null && PipeClient.IsConnected);
+            var stream = PipeClient;
+            try { return !IsErrors && stream != null && stream.IsConnected; }
+            catch (ObjectDisposedException) { return false; }
         }
 
         /// <summary>
@@ -259,9 +246,11 @@ namespace EasyPipes
             }
             try
             {
-                Message message = await StreamIO.ReadAsync(PipeClient);
+                var stream = PipeClient;
+                if (stream == null) return false;
+                Message message = await StreamIO.ReadMessageAsync(stream, MessageTimeoutMillis).ConfigureAwait(false);
 
-                if (message != null && message.IsValid)
+                if (message.IsValid)
                 {
                     message.PipeName=PipeName;
                     MessageEventArgs args = new MessageEventArgs(message);
@@ -275,7 +264,7 @@ namespace EasyPipes
                 IsErrors = true;
                 OnStateMessage(new StateMessageEventArgs($"EasyPipes.Client > {PipeName} > ReadMessagesAsync > ERROR:\n{e}"));
             }
-            isReading = false;
+            finally { isReading = false; }
             return false;
         }
 
@@ -285,7 +274,8 @@ namespace EasyPipes
         /// <param name="e"></param>
         protected virtual void OnMessageReceived(MessageEventArgs e)
         {
-            MessageReceived?.Invoke(this, e);
+            foreach (EventHandler<MessageEventArgs> handler in MessageReceived?.GetInvocationList() ?? Array.Empty<Delegate>())
+                try { handler(this, e); } catch (Exception ex) { Console.WriteLine(ex); }
         }
 
         /// <summary>
@@ -294,7 +284,8 @@ namespace EasyPipes
         /// <param name="e"></param>
         protected virtual void OnStateMessage(StateMessageEventArgs e)
         {
-            StateMessage?.Invoke(this, e);
+            foreach (EventHandler<StateMessageEventArgs> handler in StateMessage?.GetInvocationList() ?? Array.Empty<Delegate>())
+                try { handler(this, e); } catch (Exception ex) { Console.WriteLine(ex); }
         }
 
         /// <summary>
@@ -302,6 +293,8 @@ namespace EasyPipes
         /// </summary>
         public void Dispose()
         {
+            IsStarted = false;
+            lifetime.Cancel();
             PipeDispose();
         }
     }

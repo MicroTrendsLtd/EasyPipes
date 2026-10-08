@@ -1,4 +1,4 @@
-﻿//-----------------------------------------------------------------------
+//-----------------------------------------------------------------------
 // <copyright company="MicroTrends Ltd, https://github.com/MicroTrendsLtd">
 //     Author: Tom Leeson
 //     Copyright (c) 2025 MicroTrends Ltd. All rights reserved.
@@ -19,9 +19,9 @@ namespace EasyPipes
     {
         #region vars & props
         private readonly object objectLockPipeConnect = new object();
-        private readonly object objectLockPipeSender = new object();
-        private bool isWaitingConnection;
-        private bool isSendMessage;
+        private readonly SemaphoreSlim connectionGate = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim lifecycleGate = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim sendGate = new SemaphoreSlim(1, 1);
 
         public NamedPipeServerStream PipeServer { get; set; }
         public int ThreadId { get; private set; }
@@ -30,7 +30,7 @@ namespace EasyPipes
         {
             PipeName = pipeName;
         }
-        public string Message { get; set; }
+        public string Message { get; set; } = string.Empty;
         public bool IsErrors { get; private set; }
 
         public int TimeOut { get; set; } = 3600;
@@ -47,18 +47,25 @@ namespace EasyPipes
         /// <returns>A task representing the asynchronous operation.</returns>
         public async Task StartAsync()
         {
-            Console.WriteLine($"EasyPipes.Server > {PipeName} > TryCreateAndWaitForConnectionAsync > Start");
-            IsStarted = true;
-            await TryCreateAndWaitForConnectionAsync(PipeName);
+            Task<bool> connection;
+            await lifecycleGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                IsStarted = true;
+                connection = TryCreateAndWaitForConnectionAsync();
+            }
+            finally { lifecycleGate.Release(); }
+            await connection.ConfigureAwait(false);
         }
-
         /// <summary>
         /// Checks if the pipe server is ready and connected.
         /// </summary>
         /// <returns>True if the pipe server is connected and no errors occurred, otherwise false.</returns>
         public bool IsStateReady()
         {
-            return (PipeServer != null && PipeServer.IsConnected && !IsErrors);
+            var stream = PipeServer;
+            try { return stream != null && stream.IsConnected && !IsErrors; }
+            catch (ObjectDisposedException) { return false; }
         }
 
         /// <summary>
@@ -97,16 +104,7 @@ namespace EasyPipes
                 return false;
             }
 
-            if (isWaitingConnection)
-                return false;
-
-            lock (objectLockPipeConnect)
-            {
-                if (isWaitingConnection)
-                    return false;
-                isWaitingConnection = true;
-            }
-
+            await connectionGate.WaitAsync().ConfigureAwait(false);
 #if DEBUG
             Console.WriteLine($"TryCreateAndWaitForConnectionAsync {pipeName}.");
 #endif
@@ -122,104 +120,77 @@ namespace EasyPipes
                 }
 
                 // Dispose of any existing pipe server instance before creating a new one
-                await PipeDisposeAsync();
+                await PipeDisposeAsync().ConfigureAwait(false);
 
                 Console.WriteLine($"TryCreateAndWaitForConnectionAsync > {pipeName} > Starting New PipeServer");
 
                 // Create the NamedPipeServerStream with provided parameters
-                PipeServer = new NamedPipeServerStream(
+                NamedPipeServerStream stream;
+                lock (objectLockPipeConnect)
+                {
+                if (!IsStarted) return false;
+                stream = new NamedPipeServerStream(
                     pipeName,
                     pipeDirection,
                     maxInstances,
                     mode,
-                    pipeOptions,
+                    pipeOptions | PipeOptions.Asynchronous,
                     outBufferSize,
                     inBufferSize
                 );
+                PipeServer = stream;
+                }
 
                 ThreadId = Thread.CurrentThread.ManagedThreadId;
 
-                // Use CancellationTokenSource to cancel connection attempt on timeout
-                using (var cts = new CancellationTokenSource())
-                {
-                    var connectionTask = PipeServer.WaitForConnectionAsync(cts.Token);
-                    var timeoutTask = Task.Delay(TimeSpan.FromSeconds(timeOutSeconds), cts.Token);
 
-                    // Wait for either the connection or the timeout
-                    if (await Task.WhenAny(connectionTask, timeoutTask) == connectionTask)
-                    {
-                        // Connection succeeded
-                        await connectionTask;
-                        PipeServer.WaitForPipeDrain();
-                        Console.WriteLine($"TryCreateAndWaitForConnectionAsync > {pipeName} > Connection Success");
-                        return true;
-                    }
-                    else
-                    {
-                        // Timeout occurred, cancel the connection attempt
-                        cts.Cancel();
-                        throw new Exception($"Connection TimeOut");
-                    }
+                // Use CancellationTokenSource to cancel connection attempt on timeout
+                using var connectCts = new CancellationTokenSource();
+                using var abort = connectCts.Token.Register(() => stream.Dispose());
+                var connectionTask = stream.WaitForConnectionAsync(connectCts.Token);
+                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(timeOutSeconds));
+
+                var completed = await Task.WhenAny(connectionTask, timeoutTask).ConfigureAwait(false);
+                if (completed == connectionTask)
+                {
+                    // Ensure exceptions are observed
+                    await connectionTask.ConfigureAwait(false);
+
+                    Console.WriteLine($"{pipeName} connection succeeded.");
+                    return true;
                 }
+                else
+                {
+                    connectCts.Cancel();
+                    try { await connectionTask.ConfigureAwait(false); } catch { }
+                    throw new TimeoutException($"Connection to pipe '{pipeName}' timed out after {timeOutSeconds} seconds.");
+                }
+
 
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"TryCreateAndWaitForConnectionAsync > {pipeName} > ERROR:\n{ex}");
                 IsErrors = true;
-                await PipeDisposeAsync();
+                await PipeDisposeAsync().ConfigureAwait(false);
                 return false;
             }
             finally
             {
-                isWaitingConnection = false;
+                connectionGate.Release();
             }
         }
 
-        private async Task PipeDisposeAsync()
+        private Task PipeDisposeAsync()
         {
-            try
-            {
-                if (PipeServer != null)
-                {
-                    Console.WriteLine("PipeDisposeAsync");
-
-                    // Check if the pipe is broken or disconnected, and handle gracefully
-                    if (PipeServer.IsConnected)
-                    {
-                        try
-                        {
-                            await Task.Run(() =>
-                            {
-                                PipeServer.Flush();
-                                PipeServer.WaitForPipeDrain();
-                                PipeServer.Disconnect(); // Only disconnect if the pipe is still connected
-                            });
-                        }
-                        catch (IOException ioEx)
-                        {
-                            Console.WriteLine($"PipeDisposeAsync error during flush/disconnect: {ioEx.Message}");
-                        }
-                    }
-
-                    // Always dispose, even if the pipe is broken or disconnected
-                    PipeServer.Dispose();
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"PipeDisposeAsync error: {e}");
-            }
-            finally
-            {
-                IsErrors = false;
-                PipeServer = null;
-            }
+            // Never drain during shutdown: a connected but stalled reader can
+            // prevent a drain from finishing indefinitely.
+            NamedPipeServerStream stream;
+            lock (objectLockPipeConnect) { stream = PipeServer; PipeServer = null; }
+            stream?.Dispose();
+            IsErrors = false;
+            return Task.CompletedTask;
         }
-
-
-
-
         /// <summary>
         /// Attempts to connect to the pipe server and send a message.
         /// If not connected, it tries to reconnect before sending the message.
@@ -244,7 +215,7 @@ namespace EasyPipes
                 if (!await TryCreateAndWaitForConnectionAsync())
                     return false;
             }
-            return await TrySendMessageAsync(this.Message);
+            return await TrySendMessageAsync(message).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -254,85 +225,50 @@ namespace EasyPipes
         /// <returns>A task representing the result of the send operation. True if successful, otherwise false.</returns>
         public async Task<bool> TrySendMessageAsync(string message, int timeoutMillis = 5000)
         {
-            if (!IsStarted)
-            {
-                return false;
-            }
-
-            if (!IsStateReady()) return false;
-
-            // Wait until the previous message sending completes
-            var startTime = DateTime.UtcNow;
-            while (isSendMessage)
-            {
-                await Task.Delay(100);
-                // Timeout to avoid deadlock in case the flag gets stuck
-                if ((DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMillis)
-                {
-                    Console.WriteLine("TrySendMessageAsync: Timeout waiting for previous message to finish.");
-                    return false;
-                }
-            }
-
-            if (isSendMessage)
-                return false;
-
-            if (!IsStarted)
-            {
-                return false;
-            }
-
-
-            lock (objectLockPipeSender)
-            {
-                if (isSendMessage)
-                    return false;
-                isSendMessage = true;
-            }
-
-
-
+            if (message == null) throw new ArgumentNullException(nameof(message));
+            if (timeoutMillis <= 0) throw new ArgumentOutOfRangeException(nameof(timeoutMillis));
+            if (!IsStarted || !await sendGate.WaitAsync(timeoutMillis).ConfigureAwait(false)) return false;
+            NamedPipeServerStream stream = null;
             try
             {
-#if DEBUG
-                //Console.WriteLine($"TrySendMessage:>{message}");
-#endif
-
-                // Ensure that the pipe has completed the last message -- didnt do anything in this mode
-                //while (!PipeServer.IsMessageComplete)
-                //{
-                //    await Task.Delay(100);
-                //}
-
-                PipeServer.WaitForPipeDrain();
-
-                await StreamIO.WriteStringAsync(PipeServer, message);
+                if (!IsStarted || !IsStateReady()) return false;
+                stream = PipeServer;
+                if (stream == null) return false;
+                await PipeOperation.RunAsync(stream,
+                    () => StreamIO.WriteStringAsync(stream, message), timeoutMillis).ConfigureAwait(false);
                 return true;
             }
             catch (Exception e)
             {
-                Console.WriteLine($"EasyPipes.Server > {PipeName} > TrySendMessage > ERROR:{e.Message}");
-                IsErrors = true;
+                Console.WriteLine($"{PipeName} > Send > ERROR: {e.Message}");
+                if (ReferenceEquals(PipeServer, stream))
+                {
+                    PipeServer = null;
+                    IsErrors = true;
+                }
+                stream?.Dispose();
                 return false;
             }
-            finally
-            {
-                isSendMessage = false;
-            }
-
-
+            finally { sendGate.Release(); }
         }
-
         /// <summary>
         /// Stops the pipe server asynchronously, disconnecting and disposing of the resources.
         /// </summary>
         /// <returns>A task representing the asynchronous stop operation.</returns>
         public async Task StopAsync()
         {
-            IsStarted = false;
-            await PipeDisposeAsync();
-            IsErrors = false;
+            await lifecycleGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                IsStarted = false;
+                await PipeDisposeAsync().ConfigureAwait(false);
+                await connectionGate.WaitAsync().ConfigureAwait(false);
+                connectionGate.Release();
+                await sendGate.WaitAsync().ConfigureAwait(false);
+                sendGate.Release();
+                IsErrors = false;
+            }
+            finally { lifecycleGate.Release(); }
         }
-
     }
 }
