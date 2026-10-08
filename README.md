@@ -1,6 +1,7 @@
 # EasyPipes
 
-**Target framework:** .NET Standard 2.0  
+**Target framework:** .NET Standard 2.0
+
 **Platform:** Windows
 
 EasyPipes is a named-pipe client and server library for asynchronous inter-process communication using `System.IO.Pipes`. It provides UTF-8 messaging, configurable pipe settings, bounded sends, and connection recovery.
